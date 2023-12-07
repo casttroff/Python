@@ -1,0 +1,4 @@
+tk
+sphinx
+myst_parser
+peewee

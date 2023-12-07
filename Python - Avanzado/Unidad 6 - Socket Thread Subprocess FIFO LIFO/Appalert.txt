@@ -1,0 +1,1 @@
+En la función add_product intervienen los parametros: ('fefe', '1.0', '123') {}En la función add_product intervienen los parametros: ('fefe', '1.0', '1') {}
