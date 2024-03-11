@@ -2,7 +2,7 @@
                       OSM  LAYER               
 ===================================================*/
 var overallBounds = L.latLngBounds();
-var map = L.map('map').setView([40.7128,-74.0060], 4);
+var map = L.map('map').setView([-31.1228499839105,-64.1473438921363], 8);
 var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 });
@@ -121,28 +121,33 @@ function style(feature) {
     };
 }
 
+function style2(feature) {
+    return {
+        fillColor: '#800026',
+        weight: 1,
+        opacity: 1,
+        color: 'white',
+        dashArray: '3',
+        fillOpacity: 0.7
+    };
+}
 L.geoJson(statesData, {style: style}).addTo(map);
 
 function highlightFeature(e) {
     var layer = e.target;
 
     layer.setStyle({
-        weight: 5,
+        weight: 2,
         color: '#666',
         dashArray: '',
         fillOpacity: 0.7
     });
 
-    if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
-        layer.bringToFront();
-    }
-
-    info.update(layer.feature.properties);
 }
 
 function resetHighlight(e) {
     geojson.resetStyle(e.target);
-    info.update();
+
 }
 
 var geojson;
@@ -202,18 +207,6 @@ legend.onAdd = function (map) {
 };
 
 legend.addTo(map);
-
-class StateMapDrawer {
-    constructor(provincesArr) {
-        this.provincesArr = provincesArr;
-        this.overlays = {};
-    }
-
-    InitializeMap(){
-        const mapProvincesArr = this.provincesArr;
-        // Usa Promise.all para manejar múltiples llamadas asíncronas al mismo tiempo
-        const convertedGeoJsonPromises = mapProvincesArr.map(province => this.getRoutes(province));
-    }
     
     // Promise.all(convertedGeoJsonPromises)
     //     .then(convertedGeoJsonArrays => {
@@ -230,8 +223,21 @@ class StateMapDrawer {
     //         console.error('Error al convertir a GeoJSON:', error);
     //     });
 
+class StateMapDrawer {
+    constructor(provincesArr) {
+        this.provincesArr = provincesArr;
+        this.overlays = {};
+    }
+
+    InitializeMap(){
+        const mapProvincesArr = this.provincesArr;
+        // Usa Promise.all para manejar múltiples llamadas asíncronas al mismo tiempo
+        const convertedGeoJsonPromises = mapProvincesArr.map(province => this.getRoutes(province));
+    }
+
+
     async getRoutes(province) {
-        const mapObjectArr = ['provincias', 'departamentos', 'municipios'];
+        const mapObjectArr = ['provincias', 'departamentos', 'municipios', 'calles'];
         const municipalitiestArr = municipalitiesJson;
 
         for(let i=0; i<mapObjectArr.length; i++){
@@ -267,24 +273,19 @@ class StateMapDrawer {
         }
 
         console.log(`Se ha convertido ${url} a GeoJSON en el lado del cliente. geoJson: `, geoJsonFeatures);
-        geojson = L.geoJson(geoJsonFeatures);
+        L.geoJSON(geoJsonFeatures).addTo(map);
+        // geojson = L.geoJson(geoJsonFeatures, {style: style}).addTo(map);
         geojson = L.geoJson(geoJsonFeatures, {
-            style: this.style,
-            onEachFeature: this.onEachFeature
+            style: style2,
+            onEachFeature: onEachFeature
         }).addTo(map);
     }
 
-    createGeoJSONLayer(features) {
-        L.geoJson(features, {
-            style: this.style,
-            onEachFeature: this.onEachFeature
-        }).addTo(map);
-    }
 
     style() {
         return {
             fillColor: "#ccc",
-            weight: 2,
+            weight: 1,
             opacity: 1,
             color: 'white',
             dashArray: '3',
@@ -297,21 +298,20 @@ class StateMapDrawer {
         var layer = e.target;
     
         layer.setStyle({
-            weight: 5,
+            weight: 2,
             color: '#666',
             dashArray: '',
             fillOpacity: 0.7
         });
     
-        if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
-            layer.bringToFront();
-        }
+        // if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+        //     layer.bringToFront();
+        // }
 
     }
     
     resetHighlight(e) {
         geojson.resetStyle(e.target);
-  
     }
 
 
@@ -321,19 +321,19 @@ class StateMapDrawer {
     
     onEachFeature(feature, layer) {
         layer.on({
-            mouseover: this.highlightFeature,
-            mouseout: this.resetHighlight,
-            click: this.zoomToFeature
+            mouseover: highlightFeature,
+            mouseout: resetHighlight,
+            click: zoomToFeature
         });
     }
-    
-    
-    addControl(){
-        L.control.layers(baseLayers, this.overlays).addTo(map);
-    }
+
+
+    // addControl(){
+    //     L.control.layers(baseLayers, this.overlays).addTo(map);
+    // }
 }
 
 const provincesArr = ['cordoba'];
 var mapDrawed = new StateMapDrawer(provincesArr);
 mapDrawed.InitializeMap();
-mapDrawed.addControl();
+// mapDrawed.addControl();
