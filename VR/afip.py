@@ -15,7 +15,11 @@ logging.basicConfig(filename='logs.log', level=logging.DEBUG, format='%(asctime)
 
 def get_similar(endpoint, **kwargs):
     url = "{}{}?{}".format(BASE_API_URL, endpoint, urlencode(kwargs))
+    print(url)
     response = requests.get(url)
+
+    if endpoint == 'localidades-censales':
+        endpoint = endpoint.replace("-", "_")
 
     if response.status_code == 200:
         rjson = response.json()[endpoint]
@@ -99,6 +103,54 @@ def get_municipalities_list(provinces_list):
 
     return municipalities_list
 
+def get_census_localities_list(provinces_list):
+    census_localities_list = []
+    for provincia in provinces_list:
+        kwargs = {'provincia': provincia['id'], 'max': 5000}
+        census_localities_json = get_similar('localidades-censales', **kwargs)
+        print(census_localities_json)
+        census_localities_list_from_json = [{'id': census_locality['id'], 'census_locality_name': slugify(unidecode(census_locality['nombre'])).lower(), 
+                                'provincia': slugify(unidecode(provincia['nombre'])).lower(), 'provincia_id': provincia['id']} 
+                                for census_locality in census_localities_json 
+                                if census_locality['id'] and census_locality['nombre']]
+        census_localities_list.extend(census_localities_list_from_json)
+
+    return census_localities_list
+
+def get_census_localities_docs(provinces_list):
+    for province in provinces_list:
+        kwargs = {'provincia': province['id'], 'max': 5000, 'formato': 'shp'}
+        census_localities_docs = get_similar_documents('localidades-censales', **kwargs)
+        url = f"{BASE_DIR}/{slugify(province['nombre'])}"
+        extract_documents(census_localities_docs, url)
+
+def get_localities_list(provinces_list):
+    localities_list = []
+    for provincia in provinces_list:
+        kwargs = {'provincia': provincia['id'], 'max': 5000}
+        localities_json = get_similar('localidades', **kwargs)
+        print(localities_json)
+        localities_list_from_json = [{'id': locality['id'], 'locality_name': slugify(unidecode(locality['nombre'])).lower(), 
+                                'provincia': slugify(unidecode(provincia['nombre'])).lower(), 'provincia_id': provincia['id']} 
+                                for locality in localities_json 
+                                if locality['id'] and locality['nombre']]
+        localities_list.extend(localities_list_from_json)
+
+    return localities_list
+
+def get_localities_docs(provinces_list):
+    for province in provinces_list:
+        kwargs = {'provincia': province['id'], 'max': 5000, 'formato': 'shp'}
+        localities_docs = get_similar_documents('localidades', **kwargs)
+        url = f"{BASE_DIR}/{slugify(province['nombre'])}"
+        extract_documents(localities_docs, url)
+
+def get_settlements_docs(provinces_list):
+    for province in provinces_list:
+        kwargs = {'provincia': province['id'], 'max': 5000, 'formato': 'shp'}
+        settlements_docs = get_similar_documents('asentamientos', **kwargs)
+        url = f"{BASE_DIR}/{slugify(province['nombre'])}"
+        extract_documents(settlements_docs, url)
 
 def get_streets_docs(municipalities_list): 
     for municipality in municipalities_list:
@@ -106,6 +158,15 @@ def get_streets_docs(municipalities_list):
         logging.debug(f"MUN {municipality['id']}")
         streets_documents = get_similar_documents('calles', **kwargs)
         url = f"{BASE_DIR}/{municipality['provincia']}/calles/municipio-{municipality['municipalidad_nombre']}"
+        extract_documents(streets_documents, url)
+
+
+def get_routes_streets_docs(municipalities_list): 
+    for municipality in municipalities_list:
+        kwargs = {'interseccion': f"municipio:{municipality['id']}", 'formato': 'shp', 'categoria': 'ruta', 'max': 5000}
+        logging.debug(f"MUN {municipality['id']}")
+        streets_documents = get_similar_documents('calles', **kwargs)
+        url = f"{BASE_DIR}/{municipality['provincia']}/rutas/municipio-{municipality['municipalidad_nombre']}"
         extract_documents(streets_documents, url)
 
 
@@ -120,19 +181,26 @@ def extract_documents(documents, extract_folder_url):
         logging.warning(f"Error al obtener datos para {extract_folder_url}")
 
 
-def to_csv(list_):
+def to_json(list_):
     with open("json_streets.json", 'w') as f:
         json.dump(list_, f)
 
 
 provinces_list = get_provinces_list()
 # get_provinces_docs(provinces_list)
-department_list = get_departments_list(provinces_list)
+#department_list = get_departments_list(provinces_list)
 # get_departments_docs(provinces_list)
-#municipalietes_list = get_municipalities_list(provinces_list)
+#census_localities = get_census_localities_list(provinces_list)
+#localities = get_localities_list(provinces_list)
+#get_census_localities_docs(provinces_list)
+#get_localities_docs(provinces_list)
+#get_settlements_docs(provinces_list)
+# print(census_localities)
+municipalietes_list = get_municipalities_list(provinces_list)
 # get_municipalities_docs(provinces_list)
 # get_streets_docs(municipalietes_list)
-#to_csv(municipalietes_list)
-for r in department_list:
-    if r['provincia'] == 'jujuy':
-        print(r)
+get_routes_streets_docs(municipalietes_list)
+#to_json(census_localities)
+# for r in department_list:
+#     if r['provincia'] == 'jujuy':
+#         print(r)
