@@ -145,6 +145,7 @@ def get_localities_docs(provinces_list):
         url = f"{BASE_DIR}/{slugify(province['nombre'])}"
         extract_documents(localities_docs, url)
 
+
 def get_settlements_docs(provinces_list):
     for province in provinces_list:
         kwargs = {'provincia': province['id'], 'max': 5000, 'formato': 'shp'}
@@ -185,7 +186,7 @@ def to_json(list_):
     with open("json_streets.json", 'w') as f:
         json.dump(list_, f)
 
-
+# {lat: -30.691805914544798, lng: -61.99397618787771}
 provinces_list = get_provinces_list()
 # get_provinces_docs(provinces_list)
 #department_list = get_departments_list(provinces_list)
