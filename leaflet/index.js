@@ -1,171 +1,409 @@
-/*===================================================
-                      OSM  LAYER               
-===================================================*/
-var overallBounds = L.latLngBounds();
-var map = L.map('map').setView([-31.1228499839105,-64.1473438921363], 8);
-
-function getColor(d) {
-    return d > 1000 ? '#800026' :
-           d > 500  ? '#BD0026' :
-           d > 200  ? '#E31A1C' :
-           d > 100  ? '#FC4E2A' :
-           d > 50   ? '#FD8D3C' :
-           d > 20   ? '#FEB24C' :
-           d > 10   ? '#FED976' :
-                      '#FFEDA0';
-}
-
-function style(feature) {
-    return {
-        fillColor: getColor(feature.properties.density),
-        weight: 2,
-        opacity: 1,
-        color: 'white',
-        dashArray: '3',
-        fillOpacity: 0.7
-    };
-}
-
-function style2(feature) {
-    return {
-        fillColor: '#800026',
-        weight: 1,
-        opacity: 1,
-        color: 'white',
-        dashArray: '3',
-        fillOpacity: 0.7
-    };
-}
-
-function highlightFeature(e) {
-    var layer = e.target;
-    console.log("Map", map)
-
-    layer.setStyle({
-        weight: 3,
-        color: '#666',
-        dashArray: '',
-        fillOpacity: 0.7
-    });
-}
-
-function resetHighlight(e) {
-    geojson.resetStyle(e.target);
-}
-
-var geojson;
-
-async function get_ubication(lat, lng) {
-    const url = `https://apis.datos.gob.ar/georef/api/ubicacion?lat=${lat}&lon=${lng}`;
-
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('No se pudo obtener la ubicación.');
-        }
-        const data = await response.json();
-        return data;
-    } catch (error) {
-        console.error('Error al obtener la ubicación:', error);
-        return null;
-    }
-}
-
-async function zoomToFeature(e) {
-    map.fitBounds(e.target.getBounds());
-    if('categoria' in e.target.feature.properties){
-        type = e.target.feature.properties.categoria;
-        coordsLat = e.latlng['lat'];
-        coordsLng = e.latlng['lng'];
-
-        const data = await get_ubication(coordsLat, coordsLng);
-
-        if(data){
-
-            const { departamento, municipio, provincia } = data.ubicacion;
-            const dptoId = departamento.id;
-            const dptoName = departamento.nombre;
-            const muniId = municipio.id;
-            const muniName = municipio.nombre;
-            const provId = provincia.id;
-            const provName = provincia.nombre;
-            const PointsInLine = [];
-            map.eachLayer(function(layer) {
-                if (layer instanceof L.GeoJSON) {
-                    for (const key in layer['_layers']) {
-                        if (layer['_layers'].hasOwnProperty(key)) {
-                            const value = layer['_layers'][key];
-                            if('prov_id' in value.feature.properties && !('categoria' in value.feature.properties)){
-                                if(value.feature.properties.prov_id == provId && value.feature.properties.id == dptoId){
-                                    const coordsStreet = e.target.feature.geometry.coordinates
-                                    console.log("Coords Dpto", value.feature.geometry.coordinates);
-                                    console.log("Coords Street", coordsStreet);
-
-                                    L.geoJSON(value.feature.geometry, {
-                                        style: {
-                                            weight: 3,
-                                            fillColor: "#fff",
-                                            fillOpacity: 1,
-                                            color: "#aba"
-                                        }
-                                    }).addTo(map);
-
-                                    for(let i =0; i < coordsStreet.length; i++){
-                                        for(let j =0; j < coordsStreet[i].length; j++){
-                                            if(coordsStreet[i].length == 2){
-                                                PointsInLine.push(coordsStreet[i][j])
-                                            }
-
-                                        }
-                                    }
-                                    console.log("flattenedCoordsStreet", PointsInLine)
-                                    const invertedArr = PointsInLine.map(subarray => {
-                                        return [subarray[1], subarray[0]];
-                                    });
-
-                                    const verticalLine = L.polyline(invertedArr, { color: 'blue', weight: 3 });
-                                    verticalLine.addTo(map);
-                                    const marker = L.marker(coordsStreet[0][0]);
-                                    marker.addTo(map);
-                                    const marker2 = L.marker(invertedArr[invertedArr.length-1]);
-                                    marker2.addTo(map);
-
-                                    // L.geoJSON(e.target.feature.geometry, {
-                                    //     style: {
-                                    //         weight: 3,
-                                    //         fillColor: "#800026",
-                                    //         fillOpacity: 1,
-                                    //         color: "#800026"
-                                    //     }
-                                    // }).addTo(map);
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-            console.log(`dptoId ${dptoId} dptoname ${dptoName} muniId ${muniId} muniname ${muniName} provId ${provId} provname ${provName} `)
-        }
-    }
-}
-
-function onEachFeature(feature, layer) {
-    layer.on({
-        mouseover: highlightFeature,
-        mouseout: resetHighlight,
-        click: zoomToFeature
-    });
-}
-
-geojson = L.geoJson(null, {
-    style: style,
-    onEachFeature: onEachFeature
-}).addTo(map);
-
 class StateMapDrawer {
     constructor(provincesArr) {
         this.provincesArr = provincesArr;
         this.overlays = {};
+        this.intPointsArr = [];
+        this.pointsInLine = [];
+        this.onEachFeature = this.onEachFeature.bind(this);
+        this.style = this.style.bind(this);
+        this.highlightFeature = this.highlightFeature.bind(this);
+        this.resetHighlight = this.resetHighlight.bind(this);
+        this.zoomToFeature = this.zoomToFeature.bind(this);
+        this.overallBounds = L.latLngBounds();
+        this.map = L.map('map').setView([-31.1228499839105,-64.1473438921363], 8);
+        this.geojson = L.geoJson(null, {
+            style: this.style,
+            onEachFeature: this.onEachFeature
+        }).addTo(this.map);
+        const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        });
+        osm.addTo(this.map);
+    }
+    onEachFeature(feature, layer) {
+        layer.on({
+            mouseover: this.highlightFeature,
+            mouseout: this.resetHighlight,
+            click: (e) => this.zoomToFeature(e)
+        });
+    }
+
+    style(feature) {
+        return {
+            fillColor: '#800026',
+            weight: 1,
+
+            color: 'white',
+            dashArray: '3',
+
+        };
+    }
+
+    highlightFeature(e) {
+        var layer = e.target;
+        console.log("Map", this.map)
+
+        layer.setStyle({
+            weight: 3,
+            color: '#666',
+            dashArray: '',
+            fillOpacity: 0.7
+        });
+    }
+
+    resetHighlight(e) {
+        this.geojson.resetStyle(e.target);
+    }
+
+    async get_ubication(lat, lng) {
+        const url = `https://apis.datos.gob.ar/georef/api/ubicacion?lat=${lat}&lon=${lng}`;
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error('No se pudo obtener la ubicación.');
+            }
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error al obtener la ubicación:', error);
+            return null;
+        }
+    }
+
+    async zoomToFeature(e) {
+        this.map.fitBounds(e.target.getBounds());
+        if('categoria' in e.target.feature.properties){
+            let type = e.target.feature.properties.categoria;
+            let coordsLat = e.latlng['lat'];
+            let coordsLng = e.latlng['lng'];
+
+            const data = await this.get_ubication(coordsLat, coordsLng);
+
+            if(data){
+
+                const { departamento, municipio, provincia } = data.ubicacion;
+                const dptoId = departamento.id;
+                const dptoName = departamento.nombre;
+                const muniId = municipio.id;
+                const muniName = municipio.nombre;
+                const provId = provincia.id;
+                const provName = provincia.nombre;
+                const allPointsInStreet = [];
+                this.map.eachLayer((layer) => {
+                    if (layer instanceof L.GeoJSON) {
+                        for (const key in layer['_layers']) {
+                            if (layer['_layers'].hasOwnProperty(key)) {
+                                const value = layer['_layers'][key];
+                                if('prov_id' in value.feature.properties && !('categoria' in value.feature.properties)){
+                                    if(value.feature.properties.prov_id == provId && value.feature.properties.id == dptoId){
+                                        const geoStreet = e.target.feature.geometry;
+                                        const geoDpt = value.feature.geometry;
+                                        console.log("Coords Dpto", geoDpt.coordinates);
+                                        console.log("Coords Street", geoStreet.coordinates);
+
+                                        L.geoJSON(geoDpt, {
+                                            style: {
+                                                weight: 3,
+                                                fillColor: "#fff",
+                                                color: "#aba"
+                                            }
+                                        }).addTo(this.map);
+
+                                        for(let i =0; i < geoStreet.coordinates.length; i++){
+                                            for(let j =0; j < geoStreet.coordinates[i].length; j++){
+                                                allPointsInStreet.push(geoStreet.coordinates[i][j])
+                                            }
+                                        }
+
+                                        let coordsStreet = geoStreet.coordinates.map(subarray => {
+                                          return subarray.map(item => {
+                                            return [item[1], item[0]];
+                                          });
+                                        });
+
+                                        const allPointsInStreetFinal = allPointsInStreet.map(subarray => {
+                                            return [subarray[1], subarray[0]];
+                                        });
+                                        const cooDpto = geoDpt.coordinates[0].map(subarray => {
+                                            return [subarray[1], subarray[0]];
+                                        });
+                                        const firstIndex = this.getFirstCoordinate(allPointsInStreetFinal, geoDpt.coordinates[0]);
+                                        const secondIndex = this.getSecondCoordinate(allPointsInStreetFinal[firstIndex], allPointsInStreetFinal, geoDpt.coordinates[0]);
+                                        const pointsInStreet = this.getPointsInStreet(firstIndex, secondIndex, allPointsInStreetFinal);
+                                        this.getPointsInLine(pointsInStreet, cooDpto)
+
+                                        console.log("this pointsInLine", this.pointsInLine);
+                                        console.log("pointsInLine", pointsInStreet);
+
+                                        const verticalLine = L.polyline(this.pointsInLine, { color: 'blue', weight: 3 });
+                                        verticalLine.addTo(this.map);
+
+                                        const marker1 = L.marker(allPointsInStreetFinal[firstIndex]);
+                                        console.log("Marker 1", allPointsInStreetFinal[firstIndex])
+                                        console.log("Marker 1 in", firstIndex)
+                                        marker1.addTo(this.map);
+                                        console.log("Marker 2", allPointsInStreetFinal[secondIndex])
+                                        console.log("Marker 2 in", secondIndex)
+                                        console.log("INTPOINTS", this.intPointsArr)
+                                        this.splitZone(cooDpto)
+                                        // const marker2 = L.marker(allPointsInStreetFinal[secondIndex]);
+                                        // console.log("Marker 2", allPointsInStreetFinal[secondIndex])
+                                        //
+                                        // marker2.addTo(this.map);
+                                        // console.log("Marker 1", coordsStreet[coordsStreet.length - 1][coordsStreet[coordsStreet.length - 1].length - 1])
+                                        // const marker2 = L.marker(coordsStreet[coordsStreet.length - 1][coordsStreet[coordsStreet.length - 1].length - 1]);
+                                        // marker2.addTo(this.map);
+
+                                        // L.geoJSON(e.target.feature.geometry, {
+                                        //     style: {
+                                        //         weight: 3,
+                                        //         fillColor: "#800026",
+                                        //         fillOpacity: 1,
+                                        //         color: "#800026"
+                                        //     }
+                                        // }).addTo(map);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                console.log(`dptoId ${dptoId} dptoname ${dptoName} muniId ${muniId} muniname ${muniName} provId ${provId} provname ${provName} `)
+            }
+        }
+    }
+
+    splitZone(contourCoordinates) {
+        const pointOfIntersection1 = this.intPointsArr[0];
+        const pointOfIntersection2 = this.intPointsArr[1];
+        const coordinatesSide1 = [];
+        const coordinatesSide2 = [];
+        let foundedCoords = 0;
+
+        // Itera en las coordenadas del contorno
+        for (let i = 0; i < contourCoordinates.length - 1; i++) {
+            const contourLng = contourCoordinates[i][1];
+            const contourLat = contourCoordinates[i][0];
+
+            // Checkea si esta coordenada del contorno coincide con un punto de la linea
+            if ((contourLat === pointOfIntersection1[0] && contourLng === pointOfIntersection1[1]) ||
+                (contourLat === pointOfIntersection2[0] && contourLng === pointOfIntersection2[1])) {
+                foundedCoords++;
+
+                if (foundedCoords == 1){
+                    // Una vez que encuentra el primer punto de inteseccion sigue las coordenadas de la linea para luego cerrar la zona 1
+                    if (contourLat == this.pointsInLine[0][0]){
+                        const slisedPoints = this.pointsInLine.slice(0, this.pointsInLine.length - 1)
+                        coordinatesSide1.push(...slisedPoints)
+                    }
+                    if (contourLat == this.pointsInLine[this.pointsInLine.length - 1][0]){
+                        // Da vuelta el array para que las coordenadas sigan el orden correcto para ser dibujado
+                        const reversedPoints = [...this.pointsInLine].reverse();
+                        const slisedPoints = reversedPoints.slice(0, reversedPoints.length - 1)
+                        coordinatesSide1.push(...slisedPoints)
+                    }
+                }
+                if (foundedCoords == 2){
+                    // Agregar las coordenadas de la linea al final del array para cerrar el poligono 2
+                    if (contourLat == this.pointsInLine[0][0]){
+                        coordinatesSide2.push(...this.pointsInLine)
+                    }
+                    if (contourLat == this.pointsInLine[this.pointsInLine.length - 1][0]){
+                        const reversedPoints = [...this.pointsInLine].reverse();
+                        coordinatesSide2.push(...reversedPoints)
+                    }
+                }
+            }
+
+            if (foundedCoords < 1 || foundedCoords >= 2) {
+                coordinatesSide1.push([contourLat, contourLng]);
+            }
+            if (foundedCoords === 1) {
+                coordinatesSide2.push([contourLat, contourLng]);
+            }
+        }
+
+        // Agregar la primer coordenada al final del array para cerrar el poligono 1
+        const firstPointLat = contourCoordinates[0][0];
+        const firstPointLng = contourCoordinates[0][1]
+        coordinatesSide1.push([firstPointLat, firstPointLng]);
+
+        for (let i = 0; i < coordinatesSide1.length - 1; i++) {
+            this.drawDivision(coordinatesSide1[i], coordinatesSide1[i + 1], 'red');
+        }
+        for (let i = 0; i < coordinatesSide2.length - 1; i++) {
+            this.drawDivision(coordinatesSide2[i], coordinatesSide2[i + 1], 'blue');
+        }
+    }
+
+    drawDivision(c1, c2, color) {
+        const newLineCoords = [c1, c2]
+        const verticalLine = L.polyline(newLineCoords, { color: color, weight: 3 });
+        verticalLine.addTo(this.map);
+    }
+
+    getPointsInLine(cooStreet, cooDpt){
+        for(let i = 0; i < cooStreet.length; i++){
+            for(let j = 0; j < cooDpt.length; j++) {
+                if(cooStreet[i] == cooDpt[j]){
+                    console.log("COINCIDE")
+                    this.intPointsArr.push(cooStreet[i]);
+                    break;
+                }
+            }
+            if(i == 0 && this.intPointsArr.length == 0){
+                this.getNearestCoordinate(cooStreet[i], cooDpt);
+            }
+            this.pointsInLine.push(cooStreet[i]);
+            if(i == cooStreet.length -1 && this.intPointsArr.length == 1){
+                this.getNearestCoordinate(cooStreet[i], cooDpt);
+            }
+
+            if(this.intPointsArr.length == 2){
+                break;
+            }
+        }
+    }
+    getNearestCoordinate(point, contourCoordinates) {
+        let lat1 = point[0];
+        let lng1 = point[1];
+
+        let distanciaMinima = Infinity;
+        let nearestCoordinate = [];
+        const R = 6371;
+
+        for(let i = 0; i < contourCoordinates.length; i++){
+            const contourLat = contourCoordinates[i][0];
+            const contourLng = contourCoordinates[i][1];
+            const dLat = (contourLat - lat1) * (Math.PI / 180);
+            const dLng = (contourLng - lng1) * (Math.PI / 180);
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * (Math.PI / 180)) * Math.cos(contourLat * (Math.PI / 180)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const distancia = R * c;
+
+
+            if (distancia < distanciaMinima) {
+                distanciaMinima = distancia;
+                nearestCoordinate = [contourLat, contourLng];
+            }
+        }
+        this.intPointsArr.push(nearestCoordinate);
+        this.pointsInLine.push(nearestCoordinate);
+    }
+    getPointsInStreet(ix, jx , cooStreet){
+        let pointsInLine = [];
+        let inicio = 0;
+        let fin = 0;
+
+        if(ix > jx){
+            inicio = jx;
+            fin = ix;
+        }
+        else{
+            inicio = ix;
+            fin = jx;
+        }
+
+        for(let i = inicio; i <= fin; i++){
+            pointsInLine.push(cooStreet[i]);
+        }
+
+        return pointsInLine;
+    }
+    getFirstCoordinate(cooStreets, contourCoordinates) {
+        let distanciaMinima = Infinity;
+        let nearestCoordinate = [];
+        let indicei= 0;
+        let founded = false;
+        const R = 6371;
+
+        for(let i = 0; i < cooStreets.length; i++){
+            let lat1 = cooStreets[i][0];
+            let lng1 = cooStreets[i][1];
+
+            for(let j = 0; j < contourCoordinates.length; j++){
+                const contourLng = contourCoordinates[j][0];
+                const contourLat = contourCoordinates[j][1];
+
+                if(lat1 == contourLat && lng1 == contourLng){
+                    indicei = i;
+                    founded = true;
+                    break;
+                }
+
+                const dLat = (contourLat - lat1) * (Math.PI / 180);
+                const dLng = (contourLng - lng1) * (Math.PI / 180);
+                const a =
+                    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(contourLat * (Math.PI / 180)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                const distancia = R * c;
+
+                if (distancia < distanciaMinima) {
+                    distanciaMinima = distancia;
+                    nearestCoordinate = [contourLat, contourLng];
+                    indicei = i;
+                }
+            }
+
+            if(founded){
+                break;
+            }else{
+                cooStreets[indicei] = nearestCoordinate;
+            }
+        }
+        return indicei
+    }
+
+    getSecondCoordinate(point, cooStreets, cooDpt) {
+        let distanciaMinima = 0;
+        let farthestCoordinate = [];
+        const R = 6371;
+        let indicei = 0;
+        let founded = false;
+
+        for(let i = 0; i < cooStreets.length; i++){
+            let lat1 = cooStreets[i][0];
+            let lng1 = cooStreets[i][1];
+            const contourLng = point[1];
+            const contourLat = point[0];
+
+            if(lat1 != contourLat && lng1 != contourLng){
+                for(let j = 0; j < cooDpt.length; j++){
+                    const dptLng = cooDpt[j][0];
+                    const dptLat = cooDpt[j][1];
+
+                    if(lat1 == dptLat && lng1 != dptLng){
+                        indicei = i;
+                        founded = true;
+                        break;
+                    }
+                }
+            }
+            if(founded){
+                break;
+            }
+
+            const dLat = (contourLat - lat1) * (Math.PI / 180);
+            const dLng = (contourLng - lng1) * (Math.PI / 180);
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * (Math.PI / 180)) * Math.cos(contourLat * (Math.PI / 180)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const distancia = R * c;
+
+            if (distancia > distanciaMinima) {
+                distanciaMinima = distancia;
+                farthestCoordinate = [lat1, lng1];
+                indicei = i;
+            }
+        }
+
+        console.log("ii sec", indicei)
+        return indicei
     }
 
     InitializeMap(){
@@ -175,7 +413,7 @@ class StateMapDrawer {
     }
 
     async getRoutes(province) {
-        const mapObjectArr = ['departamentos', 'calles'];
+        const mapObjectArr = ['departamentos', 'rutas'];
         const municipalitiestArr = municipalitiesJson;
 
         for(let i=0; i<mapObjectArr.length; i++){
@@ -209,11 +447,10 @@ class StateMapDrawer {
             result = await source.read();
         }
 
-        // geojson = L.geoJson(geoJsonFeatures, {style: style}).addTo(map);
-        geojson = L.geoJson(geoJsonFeatures, {
-            style: style2,
-            onEachFeature: onEachFeature
-        }).addTo(map);
+        this.geojson = L.geoJson(geoJsonFeatures, {
+            style: this.style,
+            onEachFeature: this.onEachFeature
+        }).addTo(this.map);
     }
 
 }
