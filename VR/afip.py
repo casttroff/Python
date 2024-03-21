@@ -182,12 +182,56 @@ def extract_documents(documents, extract_folder_url):
         logging.warning(f"Error al obtener datos para {extract_folder_url}")
 
 
+def post_street():
+    url = "https://apis.datos.gob.ar/georef/api/calles"
+    headers = {
+        "accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "calles": [
+            {
+                "provincia": "Cordoba",
+                "departamento": "Calamuchita",
+                "orden": "id",
+                "aplanar": False,
+                "campos": "estandar",
+                "max": 4000,
+                "inicio": 0
+            }
+        ]
+    }
+
+    response = requests.post(url, json=data, headers=headers)
+
+    if response.status_code == 200:
+        lista = response.json()
+        calles = []
+
+        for i, calle in enumerate(lista['resultados'][0]['calles']):
+            calles.append(calle['id'])
+        return calles
+    else:
+        print("Error en la solicitud:")
+        print(response.text)
+
+
 def to_json(list_):
     with open("json_streets.json", 'w') as f:
         json.dump(list_, f)
 
+
+def get_streets_docs_by_street(streetlist): 
+    for street_id in streetlist:
+        kwargs = {'id': street_id, 'formato': 'shp', 'max': 5000}
+
+        streets_documents = get_similar_documents('calles', **kwargs)
+        url = f"{BASE_DIR}/calles/departamento-calamuchita-idcalle-{street_id}"
+        extract_documents(streets_documents, url)
+
+
 # {lat: -30.691805914544798, lng: -61.99397618787771}
-provinces_list = get_provinces_list()
+#provinces_list = get_provinces_list()
 # get_provinces_docs(provinces_list)
 #department_list = get_departments_list(provinces_list)
 # get_departments_docs(provinces_list)
@@ -197,11 +241,15 @@ provinces_list = get_provinces_list()
 #get_localities_docs(provinces_list)
 #get_settlements_docs(provinces_list)
 # print(census_localities)
-municipalietes_list = get_municipalities_list(provinces_list)
+#municipalietes_list = get_municipalities_list(provinces_list)
 # get_municipalities_docs(provinces_list)
 # get_streets_docs(municipalietes_list)
-get_routes_streets_docs(municipalietes_list)
-#to_json(census_localities)
+#get_routes_streets_docs(municipalietes_list)
+streets = post_street()
+print(streets)
+get_streets_docs_by_street(streets)
+
+#to_json(streets)
 # for r in department_list:
 #     if r['provincia'] == 'jujuy':
 #         print(r)
